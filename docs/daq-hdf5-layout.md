@@ -149,3 +149,30 @@ with expected ADC values. The expected ADCs must come from an INDEPENDENT source
 of truth (e.g. a one-off run of DUNE's own tools outside our build, or DUNE
 python), since validating our reimplemented decoder against its own output proves
 nothing.
+
+## FragmentHeader.size is unreliable — use the dataset byte length
+
+Reliable cross-checks (via our reader) across PDHD+PDVD show the in-payload
+`FragmentHeader.size` field does **not** dependably equal the fragment's true
+byte length:
+
+| file (first WIBEth frag) | dataset bytes (authoritative) | header.size field |
+|--------------------------|-------------------------------|-------------------|
+| np02vd run040380         | 1,195,272 (= 72 + 166×7200)   | 1,195,272 (equal) |
+| np02vd run039252         | 1,108,872 (= 72 + 154×7200)   | 1,048,576 (1 MiB; **< actual**) |
+| np02vd run039349         | 712,872   (= 72 + 99×7200)    | 655,360 (640 KiB) |
+| np04hd run027980         | 669,672   (= 72 + 93×7200)    | 669,440           |
+
+The **HDF5 dataset byte length is authoritative** and is consistently
+frame-aligned (`72 + N × frame_bytes`); `header.size` is sometimes a round buffer
+size and sometimes **smaller than the actual content** (so trusting it would
+*truncate* frames). Therefore:
+
+- size a fragment's payload from the **dataset length**, not `FragmentHeader.size`;
+- the frame-count invariant is `(dataset_bytes − 72) % frame_bytes == 0`, **not**
+  `header.size == dataset_bytes`;
+- validity is checked via the marker (`0x11112222`), not the size field.
+
+This is a concrete instance of the silent-format-drift hazard and is reflected in
+the reader (`FragmentView::size` is the dataset length) and must be reflected in
+the codec's invariants (ddm-3j8.1.7.3).
