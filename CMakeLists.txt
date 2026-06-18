@@ -7,24 +7,27 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_compile_options(-Wall -Wpedantic -Werror)
 
-# Pure, dependency-free DUNE DAQ ADC codec. For now: the data-driven format
-# descriptor + version-robustness invariants (ddm-3j8.1.7.3); the generic decode
-# loop lands with ddm-3j8.1.1. Header-only so far; depends only on dune-daq-types.
+# Pure, dependency-free DUNE DAQ ADC codec: the data-driven format descriptor +
+# version-robustness invariants (ddm-3j8.1.7.3) and the generic decode loop
+# (ddm-3j8.1.1). Depends only on dune-daq-types (and the standard library).
 find_package(dune_daq_types CONFIG REQUIRED)
 
-add_library(dune_daq_codec INTERFACE)
-target_include_directories(dune_daq_codec INTERFACE
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-  $<INSTALL_INTERFACE:include>)
-target_link_libraries(dune_daq_codec INTERFACE dune_daq_types::dune_daq_types)
-target_compile_features(dune_daq_codec INTERFACE cxx_std_20)
+add_library(dune_daq_codec SHARED dune_daq_codec/Decode.cpp)
+target_include_directories(dune_daq_codec
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(dune_daq_codec PUBLIC dune_daq_types::dune_daq_types)
+target_compile_features(dune_daq_codec PUBLIC cxx_std_20)
 
 enable_testing()
 add_subdirectory(test)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-install(TARGETS dune_daq_codec EXPORT dune_daq_codecTargets)
+install(TARGETS dune_daq_codec EXPORT dune_daq_codecTargets
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
 install(DIRECTORY dune_daq_codec/
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/dune_daq_codec"
   FILES_MATCHING PATTERN "*.hpp")
