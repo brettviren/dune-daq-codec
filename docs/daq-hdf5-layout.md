@@ -35,30 +35,38 @@ So a record group is e.g. `TriggerRecord000123.0000`. A record is identified by
 
 ## Within a record
 
-Each record group contains:
+Each record group contains a **`RawData`** group (`raw_data_group_name`; there
+is also a `view_group_name` = `Views`). Under `RawData` are the datasets,
+**flat**, with composite names that encode identity directly:
 
-1. A **record-header dataset** holding a serialized `TriggerRecordHeader`
-   (or `TimeSliceHeader`): trigger/run numbers, timestamp, the component
-   requests, etc.
-2. A **detector-group hierarchy** of **Fragment datasets**, addressed by
-   `SourceID`. The path components come from the layout parameters:
+```
+/<record group>/RawData/<SubsystemName>_0x<source_id_hex>_<FragmentTypeName>
+```
 
-   | parameter                  | default     |
-   |----------------------------|-------------|
-   | `detector_group_type`      | (config)    |
-   | `detector_group_name`      | (config)    |
-   | `element_name_prefix`      | `Element`   |
-   | `digits_for_element_number`| `5`         |
-   | `path_params_list`         | per-`Subsystem` group/region/element naming |
+Observed examples (PDVD, see "Validated" below):
+- `…/RawData/TR_Builder_0x........_TriggerRecordHeader` — the **record header**
+  (`record_header_dataset_name = "TriggerRecordHeader"`), holding a serialized
+  `TriggerRecordHeader` (trigger/run numbers, timestamp, component requests).
+- `…/RawData/Detector_Readout_0x00000190_WIBEth` — a detector **Fragment**
+  dataset (`FragmentHeader` + payload), `SourceID = (kDetectorReadout, 0x190)`,
+  `FragmentType = kWIBEth`.
+- likewise `…_TDEEth`, `…_Trigger_Primitive`, `…_Hardware_Signal`, etc.
 
-   A fragment dataset path looks like (schematically):
-   `<record group>/<detector_group_name>/<subsystem path params…>/<element_name_prefix><element_number>`
-   e.g. `…/Element00005`. The leaf **dataset is the Fragment bytes**
-   (`FragmentHeader` + payload).
+> The `path_param_list` in `filelayout_params` (with `detector_group_name`,
+> `element_name_prefix`, per-subsystem digit widths — e.g. TPC declares prefix
+> `Link`, others `Element`) describes a *possible* nested scheme, but the
+> **actual datasets observed are flat composite-named under `RawData`**. This is
+> exactly why the **traverse + classify by name** reading strategy (below) is
+> preferred over constructing paths from the layout parameters.
 
 `SourceID` = `{ subsystem, id }` with
 `Subsystem ∈ {kUnknown=0, kDetectorReadout=1, kHwSignalsInterface=2,
-kTrigger=3, kTRBuilder=4}`. Detector data lives under `kDetectorReadout`.
+kTrigger=3, kTRBuilder=4}`. The composite name's `SubsystemName` /
+`FragmentTypeName` are the enum names (`Detector_Readout`, `TR_Builder`,
+`Trigger`, `HW_Signals_Interface`; `WIBEth`, `TDEEth`, `Trigger_Primitive`, …).
+The file also stores `source_id_path_map`, `fragment_type_source_id_map`,
+`subdetector_source_id_map`, and `record_header_source_id` as attributes, so a
+reader may resolve identity from attributes instead of parsing names.
 
 ## Self-description & versioning (important)
 
@@ -73,6 +81,9 @@ version/config.
 Each fragment dataset is a flat byte blob = `FragmentHeader` followed by payload.
 From `daqdataformats`:
 
+- `FragmentHeader` begins with `fragment_header_marker = 0x11112222` (uint32 @0),
+  then `version` (uint32 @4), then `size` (uint64 @8). `sizeof(FragmentHeader)` is
+  **72 bytes** (validated below).
 - `FragmentHeader.size` = total bytes; payload size = `size - sizeof(FragmentHeader)`.
 - `FragmentHeader.fragment_type` (`FragmentType`) selects the payload codec; e.g.
   `kWIBEth = 12` (see `wibeth-format.md`), `kWIB = 2`, `kDAPHNE = 3`, … (full list
@@ -100,3 +111,41 @@ codec (see `format-descriptor-adr.md`): treat the layout version as advisory,
 verify structural invariants (record-header present, fragment header `size`
 consistent with the dataset byte length, `SourceID`/`FragmentType` in range), and
 fail loudly on violation.
+
+## Validated against a real PDVD file
+
+Cross-checked against a ProtoDUNE Vertical Drift (PDVD) raw file
+(`np02vd_raw_run040380_0019_…`, ~4 GB), 2025-11-05. Concrete observations:
+
+- **Records** are top-level groups `TriggerRecord<rec>.<seq>`. The root
+  `filelayout_params` attribute (JSON) declared `digits_for_record_number = 5`
+  (not the library default 6) and `digits_for_sequence_number = 4`, e.g.
+  `TriggerRecord01663.0000` — confirming versions/digit-widths must be read, not
+  hard-coded. A `filelayout_version` attribute is also present.
+- **Layout is flat** under `RawData`: `…/RawData/<Subsystem>_0x<sid>_<FragType>`.
+  One record contained, e.g., 96 `Detector_Readout_…_WIBEth`, 96
+  `…_TDEEth`, 12 `Trigger_…_Trigger_Primitive`, plus `Trigger_Activity`,
+  `Trigger_Candidate`, `HW_Signals_Interface_…_Hardware_Signal`, and one
+  `TR_Builder_…_TriggerRecordHeader`. So a single file mixes multiple detector
+  formats (here both **WIBEth** and **TDEEth**).
+- **FragmentHeader validated** on `Detector_Readout_0x00000190_WIBEth`
+  (dataset = 1,195,272 bytes, an `[N][1]` uint8 dataset): bytes[0:4] =
+  `0x11112222` (marker ✓); bytes[8:16] = `1195272` = the dataset size (the
+  `size` field ✓). With `sizeof(FragmentHeader) = 72`, payload = `1,195,200 =
+  166 × 7200`, i.e. **166 WIBEth frames @ 7200 bytes** — confirming
+  `wibeth-format.md`.
+- **Version drift, observed in the wild:** the FragmentHeader `version` field
+  read **5**, while the current reference defines `s_fragment_header_version = 6`.
+  This is a concrete example of the silent-drift problem the version-robustness
+  strategy must handle (treat declared versions as advisory; rely on structural
+  invariants). See `format-descriptor-adr.md`.
+
+### Candidate test fixture
+
+A small, committable fixture (the 4 GB file cannot be committed) for the codec
+tests: extract one WIBEth Fragment (or a single 7200-byte WIBEth frame) from
+`/TriggerRecord01663.0000/RawData/Detector_Readout_0x00000190_WIBEth` and pin it
+with expected ADC values. The expected ADCs must come from an INDEPENDENT source
+of truth (e.g. a one-off run of DUNE's own tools outside our build, or DUNE
+python), since validating our reimplemented decoder against its own output proves
+nothing.
