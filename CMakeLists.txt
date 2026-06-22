@@ -12,7 +12,9 @@ add_compile_options(-Wall -Wpedantic -Werror)
 # (ddm-3j8.1.1). Depends only on dune-daq-types (and the standard library).
 find_package(dune_daq_types CONFIG REQUIRED)
 
-add_library(dune_daq_codec SHARED dune_daq_codec/Decode.cpp)
+add_library(dune_daq_codec SHARED
+  dune_daq_codec/Decode.cpp
+  dune_daq_codec/OnlineOfflineChannels.cpp)
 target_include_directories(dune_daq_codec
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
