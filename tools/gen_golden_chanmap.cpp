@@ -104,7 +104,7 @@ int main(int argc, char** argv)
         std::ofstream out(out_dir + "/chanmap_golden_cold.txt");
         out << "# dune-daq-codec channel-map golden; oracle: DUNE dune::PD2HDChannelMapSP\n";
         out << "# map " << kColdMap << "\n";
-        out << "# columns: det crate slot stream channel offline (det ignored; slot = wib-1, stream = link, channel = wibframechan)\n";
+        out << "# columns: det crate slot stream channel offline (unified WIBEth key: stream = (link<<6)|(wibframechan/64), channel = wibframechan%64)\n";
         std::size_t n = 0, written = 0;
         for (std::size_t i = 0; i < offs.size(); i += stride, ++n) {
             const unsigned offl = offs[i];
@@ -116,9 +116,14 @@ int main(int argc, char** argv)
                 std::fprintf(stderr, "cold: DUNE round-trip mismatch at offline %u\n", offl);
                 return 3;
             }
-            // det is not part of a cold map's key; emit 0.
-            out << 0 << ' ' << ci.crate << ' ' << slot << ' ' << ci.link << ' '
-                << ci.wibframechan << ' ' << offl << '\n';
+            // Emit the key in the UNIFIED WIBEth convention (what OnlineOfflineChannels
+            // and DUNE's get_offline_channel_from_det_crate_slot_stream_chan take):
+            // the composite stream_id = (link<<6) | (wibframechan/64), and the
+            // frame-local channel = wibframechan % 64. det is ignored for cold maps.
+            const unsigned stream = (ci.link << 6) | (ci.wibframechan / 64);
+            const unsigned channel = ci.wibframechan % 64;
+            out << 0 << ' ' << ci.crate << ' ' << slot << ' ' << stream << ' '
+                << channel << ' ' << offl << '\n';
             ++written;
         }
         std::printf("cold: wrote %zu of %zu rows (stride %zu) from %s\n", written, offs.size(), stride, kColdMap);

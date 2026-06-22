@@ -44,14 +44,21 @@ int main()
     check(cold.schema() == OnlineOfflineChannels::Schema::cold_electronics_13,
           "cold: detected 13-column schema");
     check(cold.size() == 3, "cold: 3 rows (comment skipped)");
-    // slot -> wib (= slot+1), stream -> link, channel -> wibframechan; det ignored.
+    // Unified WIBEth key: slot -> wib (= slot+1); stream decomposes to
+    // link = (stream>>6)&1 and the 64-channel sub-block (stream&0x3), so
+    // wibframechan = 64*(stream&0x3) + channel. det ignored.
+    // row0: wib2,link0,wibframechan0  -> slot1, stream0,  channel0
     check(cold.offline(/*det=*/99, /*crate=*/1, /*slot=*/1, /*stream=*/0, /*chan=*/0) == 0,
-          "cold: (crate1, slot1->wib2, link0, wibframechan0) -> offline 0; det ignored");
+          "cold: (slot1->wib2, link0, wibframechan0) -> offline 0; det ignored");
+    // row1: wib2,link0,wibframechan1  -> slot1, stream0,  channel1
     check(cold.offline(0, 1, 1, 0, 1) == 1, "cold: wibframechan 1 -> offline 1");
-    check(cold.offline(0, 1, 2, 1, 200) == 100,
-          "cold: (slot2->wib3, link1, wibframechan200) -> offline 100");
+    // row2: wib3,link1,wibframechan200 -> slot2, stream=(1<<6)|(200/64)=67, channel=200%64=8
+    check(cold.offline(0, 1, 2, 67, 8) == 100,
+          "cold: (slot2->wib3, stream67->link1+block3, channel8 => wibframechan200) -> offline 100");
     check(cold.offline(0, 1, 0, 0, 0) == OnlineOfflineChannels::invalid_channel,
           "cold: wrong slot (wib1) -> invalid");
+    check(cold.offline(0, 1, 1, 4, 0) == OnlineOfflineChannels::invalid_channel,
+          "cold: invalid stream id (4, not 0..3/64..67) -> invalid");
 
     // --- 12-column warm-electronics table -----------------------------------
     // offlchan detid detelement crate slot stream streamchan

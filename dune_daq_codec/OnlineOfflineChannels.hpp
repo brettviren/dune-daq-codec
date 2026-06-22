@@ -19,9 +19,13 @@
 //     online key (detid, crate, slot, stream, streamchan).
 //
 // This class auto-detects the layout and exposes the INTERSECTION of the two:
-// the unified online->offline query plus the columns common to both. Per-schema
-// key quirks (cold uses wib = slot+1, link = stream, wibframechan = channel;
-// warm keys on detid) are handled internally.
+// the unified online->offline query plus the columns common to both. The query
+// matches DUNE's get_offline_channel_from_det_crate_slot_stream_chan; per-schema
+// key handling is internal:
+//   * warm: (det, crate, slot, stream, channel) used directly as the key.
+//   * cold: wib = slot+1, and the DAQEthHeader stream_id is decomposed as
+//     link = (stream>>6)&1, wibframechan = 64*(stream&0x3) + channel (the WIBEth
+//     frame-local channel). det is ignored (the table is one detector).
 //
 // This is an initial, deliberately minimal API; the channel-argument-convention
 // difference (streamchan 0-63 vs wibframechan 0-255) is documented and deferred

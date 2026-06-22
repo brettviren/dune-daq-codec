@@ -53,8 +53,11 @@ static void check_cold(const std::string& path)
     if (t.size() == 13) {
         const unsigned offl = u(t[0]), crate = u(t[1]), wib = u(t[3]), link = u(t[4]),
                        wfc = u(t[12]);
-        // Query uses slot (= wib-1), stream (= link), channel (= wibframechan); det ignored.
-        check(m.offline(/*det=*/0, crate, wib - 1, link, wfc) == static_cast<int>(offl),
+        // Build the unified WIBEth key: slot = wib-1, stream = (link<<6)|(wibframechan/64),
+        // channel = wibframechan % 64; det ignored.
+        const unsigned stream = (link << 6) | (wfc / 64);
+        const unsigned channel = wfc % 64;
+        check(m.offline(/*det=*/0, crate, wib - 1, stream, channel) == static_cast<int>(offl),
               path + ": first-row online key -> its offline channel");
     }
 }

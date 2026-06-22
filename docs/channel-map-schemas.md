@@ -72,11 +72,25 @@ Both reduce to DUNE's unified query
 `OnlineOfflineChannels::offline(det, crate, slot, stream, channel)` applies the
 per-schema transform internally.
 
-### Open issue — the `channel` argument convention
+### The `(stream, channel)` convention (resolved)
 
-`channel` means `streamchan` (0–63) for warm maps but `wibframechan` (0–255) for
-cold maps; these are different numberings, not a rescale. The caller (the
-dune-daq-wct bridge) must pass the channel index in the convention the decoded
-frame uses, which is tied to the fragment's frame format (WIBEth → streamchan;
-WIB2 → wibframechan). Wiring the bridge to pass the right index per format is
-left to ddm-3j8.1.5 / ddm-3j8.1.12; this class only owns parse + lookup.
+The caller always passes the raw DAQEthHeader `stream_id` and the WIBEth
+frame-local channel index (`get_adc` index, 0–63). `OnlineOfflineChannels`
+applies the per-schema transform internally, mirroring DUNE's unified
+`get_offline_channel_from_det_crate_slot_stream_chan`:
+
+- **warm (12-col):** `stream` and `channel` are the map key columns `stream` and
+  `streamchan` directly.
+- **cold (13-col):** the `stream_id` is COMPOSITE — bit 6 is the cold-electronics
+  `link` (0/1) and the low 2 bits select a 64-channel sub-block of the WIB's
+  256-channel `wibframechan` space:
+
+  ```
+  link         = (stream >> 6) & 1
+  wibframechan = 64 * (stream & 0x3) + channel        # channel = WIBEth chan 0..63
+  ```
+
+  Stream ids outside `{0,1,2,3, 64,65,66,67}` are invalid (return -1). This is
+  the exact decomposition in DUNE's `PD2HDChannelMapSPPluginBase`. Verified end
+  to end on real PDHD data: all 10240 channels of a 4-APA record map to the
+  10240 distinct offline ids 0..10239 (ddm-3j8.1.16).

@@ -140,10 +140,23 @@ int OnlineOfflineChannels::offline(unsigned det, unsigned crate, unsigned slot,
 {
     std::uint64_t key = 0;
     if (schema_ == Schema::cold_electronics_13) {
-        // det ignored; slot -> wib (= slot+1), stream -> link, channel -> wibframechan.
-        key = pack_key(0, crate, slot + 1, stream, channel);
+        // Unified online->offline for cold electronics (HD / VD-bottom), matching
+        // DUNE's PD2HDChannelMapSPPluginBase::get_offline_channel_from_det_crate_
+        // slot_stream_chan. det is ignored (the table is one detector); slot maps
+        // to wib = slot+1. The DAQEthHeader stream_id is COMPOSITE: bit 6 is the
+        // cold-electronics link (0/1) and the low 2 bits select a 64-channel
+        // sub-block within the WIB's 256-channel wibframechan space, so
+        //   wibframechan = 64*(stream & 0x3) + channel.
+        // (channel is the WIBEth frame-local index 0..63.) Streams other than
+        // 0..3 / 64..67 are invalid.
+        if (stream & 0xbcu) return invalid_channel;
+        const unsigned link = (stream >> 6) & 0x1u;
+        const unsigned wibframechan = 64u * (stream & 0x3u) + channel;
+        key = pack_key(0, crate, slot + 1, link, wibframechan);
     }
     else {
+        // Warm electronics (VD / TDE): stream and channel are used directly as
+        // the (stream, streamchan) key columns (matches dune::TPCChannelMapSP).
         key = pack_key(det, crate, slot, stream, channel);
     }
     const auto it = by_online_.find(key);
