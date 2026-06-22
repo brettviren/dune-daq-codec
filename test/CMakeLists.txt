@@ -18,3 +18,11 @@ add_test(NAME golden COMMAND test_golden)
 add_executable(test_channel_map test_channel_map.cpp)
 target_link_libraries(test_channel_map PRIVATE dune_daq_codec)
 add_test(NAME channel_map COMMAND test_channel_map)
+
+# Parse the real vendored DUNE tables (ddm-3j8.1.12). Reference-free: reads the
+# committed files under data/channelmaps, not reference/.
+add_executable(test_channel_map_vendored test_channel_map_vendored.cpp)
+target_link_libraries(test_channel_map_vendored PRIVATE dune_daq_codec)
+target_compile_definitions(test_channel_map_vendored PRIVATE
+  CHANNELMAPS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data/channelmaps")
+add_test(NAME channel_map_vendored COMMAND test_channel_map_vendored)

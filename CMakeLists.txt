@@ -33,6 +33,10 @@ install(TARGETS dune_daq_codec EXPORT dune_daq_codecTargets
 install(DIRECTORY dune_daq_codec/
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/dune_daq_codec"
   FILES_MATCHING PATTERN "*.hpp")
+# Vendored DUNE channel-map tables (ddm-3j8.1.12); see data/channelmaps/PROVENANCE.md.
+install(DIRECTORY data/channelmaps
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/dune_daq_codec"
+  FILES_MATCHING PATTERN "*.txt" PATTERN "*.md")
 install(EXPORT dune_daq_codecTargets
   FILE dune_daq_codecTargets.cmake
   NAMESPACE dune_daq_codec::
