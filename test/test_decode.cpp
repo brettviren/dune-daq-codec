@@ -126,6 +126,21 @@ int main()
         check(threw, "decode throws on a frame-misaligned fragment");
     }
 
+    // Frames must agree on the data source (one stream per fragment): corrupt
+    // one frame's stream_id and expect rejection.
+    {
+        std::vector<std::byte> mixed = buf;  // a valid N-frame fragment
+        std::byte* frame1 = mixed.data() + hdr + 1 * d.frame_bytes;
+        dune_daq::DAQEthHeader eh{};
+        std::memcpy(&eh, frame1, sizeof(eh));
+        eh.stream_id = 9;  // frame 0 had stream_id 7
+        std::memcpy(frame1, &eh, sizeof(eh));
+        bool threw = false;
+        try { decode(d, std::span<const std::byte>(mixed)); }
+        catch (const std::runtime_error&) { threw = true; }
+        check(threw, "decode throws when frames disagree on (det/crate/slot/stream)");
+    }
+
     if (fails) { std::cerr << fails << " failures\n"; return 1; }
     std::cout << "dune-daq-codec decode OK\n";
     return 0;

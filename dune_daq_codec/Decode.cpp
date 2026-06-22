@@ -63,8 +63,35 @@ DecodedFragment decode(const FormatDescriptor& d, std::span<const std::byte> fra
     out.n_ticks = n_frames * d.n_samples;
     out.adcs.resize(static_cast<std::size_t>(out.n_channels) * out.n_ticks);
 
+    // Metadata + per-frame consistency reference from the first frame's
+    // DAQEthHeader. The dense [channel][tick] model assigns each row a single
+    // online channel identity (det, crate, slot, stream, c), so every frame in
+    // the fragment MUST share that data-source tuple; otherwise row `c` would
+    // mean different physical channels at different ticks. A DAQ fragment is one
+    // SourceID = one stream, so this should always hold; we verify it rather
+    // than assume. (Self-triggered formats that carry explicit per-frame channel
+    // ids, e.g. DAPHNE, are handled separately and do not use this decoder.)
+    dune_daq::DAQEthHeader eh0;
+    if (n_frames > 0) {
+        std::memcpy(&eh0, payload, sizeof(eh0));
+        result.meta = StreamMeta{static_cast<unsigned>(eh0.version),  static_cast<unsigned>(eh0.det_id),
+                                 static_cast<unsigned>(eh0.crate_id), static_cast<unsigned>(eh0.slot_id),
+                                 static_cast<unsigned>(eh0.stream_id), eh0.timestamp};
+    }
+
     for (std::size_t f = 0; f < n_frames; ++f) {
         const std::byte* frame = payload + f * d.frame_bytes;
+        if (f != 0) {
+            dune_daq::DAQEthHeader eh;
+            std::memcpy(&eh, frame, sizeof(eh));
+            if (eh.det_id != eh0.det_id || eh.crate_id != eh0.crate_id ||
+                eh.slot_id != eh0.slot_id || eh.stream_id != eh0.stream_id) {
+                throw std::runtime_error(
+                    "dune-daq-codec: fragment frames disagree on the data source "
+                    "(det/crate/slot/stream); the dense channel<->row mapping requires "
+                    "one stream per fragment");
+            }
+        }
         const std::byte* adc_region = frame + d.frame_header_bytes;
         for (unsigned s = 0; s < d.n_samples; ++s) {
             const std::size_t tick = f * d.n_samples + s;
@@ -75,14 +102,6 @@ DecodedFragment decode(const FormatDescriptor& d, std::span<const std::byte> fra
         }
     }
 
-    // Metadata from the first frame's DAQEthHeader.
-    if (n_frames > 0) {
-        dune_daq::DAQEthHeader eh;
-        std::memcpy(&eh, payload, sizeof(eh));
-        result.meta = StreamMeta{static_cast<unsigned>(eh.version),  static_cast<unsigned>(eh.det_id),
-                                 static_cast<unsigned>(eh.crate_id), static_cast<unsigned>(eh.slot_id),
-                                 static_cast<unsigned>(eh.stream_id), eh.timestamp};
-    }
     return result;
 }
 
