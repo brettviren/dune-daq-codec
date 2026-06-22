@@ -26,3 +26,12 @@ target_link_libraries(test_channel_map_vendored PRIVATE dune_daq_codec)
 target_compile_definitions(test_channel_map_vendored PRIVATE
   CHANNELMAPS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data/channelmaps")
 add_test(NAME channel_map_vendored COMMAND test_channel_map_vendored)
+
+# Golden cross-check vs DUNE's own detchannelmaps SP classes (ddm-3j8.1.16).
+# Committed fixtures (tools/gen_golden_chanmap.cpp) are the oracle; reference-free.
+add_executable(test_channel_map_golden test_channel_map_golden.cpp)
+target_link_libraries(test_channel_map_golden PRIVATE dune_daq_codec)
+target_compile_definitions(test_channel_map_golden PRIVATE
+  FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+  CHANNELMAPS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data/channelmaps")
+add_test(NAME channel_map_golden COMMAND test_channel_map_golden)
